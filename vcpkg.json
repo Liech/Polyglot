@@ -1,10 +1,11 @@
 {
   "name": "polyglotapi",
   "version-string": "1.0.0",
+  "builtin-baseline": "b0698a9c2dd8fbf980bb880574801badedf16c86",
   "dependencies": [
     "nlohmann-json",
-	"lua",
-	"pybind11",
-	"catch2"
+    "lua",
+    "pybind11",
+    "catch2"
   ]
 }

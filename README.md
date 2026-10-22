@@ -1,6 +1,5 @@
 # todo for v1
 
- * luarocks integration
  * make sure it builds on linux
 
 # Polyglot
@@ -38,11 +37,10 @@ run(py);
 
 Node is an nlohmann::json compatible class, that additionally can store functions.
 
-
 This works in both ways. Here is a way to call a c++ function from lua.
 
 ```cpp
-    PolyglotAPI::Lua::LuaEngine engine;
+    Polyglot::Lua::LuaEngine engine;
     std::function<Node(const Node& arg)> func = [](const Node& arg) -> Node { return static_cast<double>(arg) * 2.0; };
     engine.setVar("myCallback", func);
     engine.executeString("result = myCallback(21)");
@@ -53,7 +51,7 @@ This works in both ways. Here is a way to call a c++ function from lua.
 And here one that calls lua from c++
 
 ```cpp
-    PolyglotAPI::Lua::LuaEngine engine;
+    Polyglot::Lua::LuaEngine engine;
     engine.executeString("my_func = function(x) return x * 2 end");
     auto fun = engine.getVar("my_func");
     Node result = fun(21.0);
@@ -63,7 +61,7 @@ And here one that calls lua from c++
 You also can leverage full nested json like structures.
 
 ```cpp
-    PolyglotAPI::Lua::LuaEngine engine;
+    Polyglot::Lua::LuaEngine engine;
 
     nlohmann::json table;
     table["a"] = 1.0;
@@ -77,18 +75,16 @@ You also can leverage full nested json like structures.
 
 # Language Extensions
 
-There are cmake these variables to install the packages in the buildstep.
-
-You can also decide here to not compile a language.
+CMake cache variables configure packages installed during build time:
 
 ```cmake
-option(POLYGLOT_ENABLE_PYTHON "Polyglot Python" ON)
-option(POLYGLOT_ENABLE_LUA "Polyglot Lua" ON)
 set(POLYGLOT_PYTHON_EXTENSIONS "numpy" CACHE STRING "Space-separated list of pip packages")
-set(POLYGLOT_LUA_EXTENSIONS "LuaFileSystem" CACHE STRING "Space-separated list of luarocks packages")
+set(POLYGLOT_LUA_EXTENSIONS "kikito/inspect.lua" CACHE STRING "Space-separated list of GitHub repositories (user/repo)")
 ```
 
-you also can add extensions at runtime:
+Lua extensions use GitHub shortlinks (`user/repo`) to fetch pure Lua packages directly without requiring external C build tools.
+
+You can also add extensions at runtime:
 
 ```cpp
 Polyglot::Python::PythonEngine engine;
@@ -98,8 +94,8 @@ engine.executeString("import urlman;");
 
 ```cpp
 Polyglot::Lua::LuaEngine engine;
-engine.addExtension("LuaFileSystem");
-engine.executeString("local lfs = require\"lfs\";");
+engine.addExtension("kikito/inspect.lua");
+engine.executeString("inspect = require('inspect')");
 ```
 
 # Installation

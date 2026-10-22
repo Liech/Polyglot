@@ -1,11 +1,11 @@
 #pragma once
 
+#include "Polyglot/Engine.h"
 #include <functional>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
-#include "Polyglot/Engine.h"
 
 struct lua_State;
 
@@ -25,10 +25,7 @@ namespace Polyglot
             virtual Node getVar(const std::string& name) const override;
             virtual void setVar(const std::string& name, const Node& value) override;
 
-            virtual bool addExtension(const std::string& extensionName) override
-            {
-                throw std::runtime_error("Not yet implemented!");
-            }; // installs single extension with luarocks
+            virtual bool addExtension(const std::string& extensionName) override;
 
           private:
             void initialize();

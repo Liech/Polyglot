@@ -1,5 +1,7 @@
 #include "LuaEngine.h"
-
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <lua.hpp>
 #include <sstream>
@@ -27,6 +29,17 @@ namespace Polyglot
         {
             state = luaL_newstate();
             luaL_openlibs(state);
+
+            std::filesystem::path exePath    = std::filesystem::current_path();
+            std::filesystem::path modulesDir = exePath / "lua" / "modules";
+
+            std::string pathPatterns = (modulesDir / "?.lua;").generic_string() + (modulesDir / "?" / "init.lua;").generic_string() + (modulesDir / "?" / "?.lua;").generic_string() +
+                                       (modulesDir / "?" / "src" / "?.lua;").generic_string() + (modulesDir / "?" / "lua" / "?.lua;").generic_string() +
+                                       (modulesDir / "?.lua" / "?.lua;").generic_string() + (modulesDir / "?.lua" / "src" / "?.lua;").generic_string() +
+                                       (modulesDir / "?.lua" / "lua" / "?.lua;").generic_string() + (modulesDir / "?.lua" / "init.lua;").generic_string();
+
+            std::string setupScript = "package.path = [[" + pathPatterns + "]] .. package.path\n";
+            luaL_dostring(state, setupScript.c_str());
         }
 
         void LuaEngine::executeFile(const std::string& filename)
@@ -149,10 +162,46 @@ namespace Polyglot
             lua_pop(state, 1);
             return result;
         }
+
+        bool LuaEngine::addExtension(const std::string& extensionName)
+        {
+            std::filesystem::path exePath    = std::filesystem::current_path();
+            std::filesystem::path pythonExe  = exePath / "python" / "python.exe";
+            std::filesystem::path syncScript = exePath / "lua" / "sync_lua.py";
+            std::filesystem::path modulesDir = exePath / "lua" / "modules";
+
+            std::string pythonCmd = std::filesystem::exists(pythonExe) ? ("\"" + pythonExe.string() + "\"") : "python";
+            std::string command   = "\"" + pythonCmd + " \"" + syncScript.string() + "\" \"" + modulesDir.string() + "\" " + extensionName + "\"";
+
+            int result = std::system(command.c_str());
+            if (result != 0)
+            {
+                return false;
+            }
+
+            std::string repoName = extensionName;
+            auto        slashPos = repoName.find_last_of('/');
+            if (slashPos != std::string::npos)
+            {
+                repoName = repoName.substr(slashPos + 1);
+            }
+            std::string shortName = repoName;
+            if (shortName.ends_with(".lua"))
+            {
+                shortName = shortName.substr(0, shortName.length() - 4);
+            }
+
+            std::filesystem::path installedDir = modulesDir / shortName;
+            std::string           dynamicPaths = (installedDir / "?.lua;").generic_string() + (installedDir / "?" / "init.lua;").generic_string() + (installedDir / "src" / "?.lua;").generic_string() +
+                                                 (installedDir / "lua" / "?.lua;").generic_string();
+
+            std::string updateScript = "package.path = [[" + dynamicPaths + "]] .. package.path\n";
+            luaL_dostring(state, updateScript.c_str());
+
+            return true;
+        }
     }
 }
-
-
 
 #ifdef ISTESTPROJECT
 #include <catch2/catch_test_macros.hpp>
@@ -270,6 +319,28 @@ TEST_CASE("LuaEngine: Lua Callback -> Node Call", "[LuaEngine]")
 
     Node result = fun(21.0);
     REQUIRE(std::get<double>(result.value) == 42.0);
+}
+
+TEST_CASE("LuaEngine: Preinstalled Extension", "[LuaEngine][Extension]")
+{
+    std::filesystem::path mockDir = std::filesystem::current_path() / "lua" / "modules" / "mockpkg";
+    std::filesystem::create_directories(mockDir);
+    {
+        std::ofstream file(mockDir / "init.lua");
+        file << "return { value = 123 }";
+    }
+
+    Polyglot::Lua::LuaEngine engine;
+    engine.executeString("pkg = require('mockpkg')");
+    engine.executeString("res = pkg.value");
+    Node res = engine.getVar("res");
+    REQUIRE(static_cast<double>(res) == 123.0);
+}
+
+TEST_CASE("LuaEngine: AddExtension Interface", "[LuaEngine][Extension]")
+{
+    Polyglot::Lua::LuaEngine engine;
+    REQUIRE_NOTHROW(engine.addExtension("dummy_extension_probe"));
 }
 
 #endif

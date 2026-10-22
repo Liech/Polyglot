@@ -2,24 +2,18 @@ cmake_minimum_required(VERSION 3.24...4.0.2)
 
 project(Polyglot)
 
-option(POLYGLOT_ENABLE_PYTHON "Polyglot Python" ON)
-option(POLYGLOT_ENABLE_LUA "Polyglot Lua" ON)
 set(POLYGLOT_PYTHON_EXTENSIONS "numpy" CACHE STRING "Space-separated list of pip packages")
-set(POLYGLOT_LUA_EXTENSIONS "LuaFileSystem" CACHE STRING "Space-separated list of luarocks packages")
+set(POLYGLOT_LUA_EXTENSIONS "kikito/inspect.lua" CACHE STRING "Space-separated list of GitHub repositories (user/repo)")
 
 ############################################################################
 
 find_package(nlohmann_json REQUIRED)
 find_package(Catch2 CONFIG REQUIRED)
 
-if(POLYGLOT_ENABLE_LUA)
-  find_package(Lua REQUIRED)
-endif()
+find_package(Lua REQUIRED)
 
-if(POLYGLOT_ENABLE_PYTHON)
-  find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Embed)
-  find_package(pybind11 CONFIG REQUIRED)
-endif()
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Embed)
+find_package(pybind11 CONFIG REQUIRED)
 
 ############################################################################
 ############################################################################
@@ -44,6 +38,7 @@ source_group("Python" FILES ${Python_Files})
 set(main_Files
     "Source/Polyglot/Node.cpp"
     "Source/Polyglot/Node.h"
+    "Source/Polyglot/Engine.cpp"
     "Source/Polyglot/Engine.h"
     "Source/Polyglot/testmain.cpp"
 )
@@ -53,13 +48,8 @@ set(ALL_FILES
     ${main_Files}
 )
 
-if(POLYGLOT_ENABLE_LUA)
-    list(APPEND ALL_FILES ${Lua_Files})
-endif()
-
-if(POLYGLOT_ENABLE_PYTHON)
-    list(APPEND ALL_FILES ${Python_Files})
-endif()
+list(APPEND ALL_FILES ${Lua_Files})
+list(APPEND ALL_FILES ${Python_Files})
 
 ############################################################################
 ############################################################################
@@ -74,23 +64,22 @@ target_compile_definitions(PolyglotTest PRIVATE -DISTESTPROJECT=1)
 set_property(TARGET Polyglot PROPERTY CXX_STANDARD 23)
 set_property(TARGET PolyglotTest PROPERTY CXX_STANDARD 23)
 
+set_property(TARGET Polyglot PROPERTY MSVC_DEBUG_INFORMATION_FORMAT Embedded)
+set_property(TARGET PolyglotTest PROPERTY MSVC_DEBUG_INFORMATION_FORMAT Embedded)
+
 target_link_libraries(PolyglotDependencies INTERFACE
     nlohmann_json::nlohmann_json
 )
 target_include_directories(PolyglotDependencies INTERFACE 
     "${CMAKE_CURRENT_SOURCE_DIR}/Source"
 )
-if(POLYGLOT_ENABLE_LUA)
-    target_link_libraries(PolyglotDependencies INTERFACE ${LUA_LIBRARIES})
-    target_include_directories(PolyglotDependencies INTERFACE ${LUA_INCLUDE_DIR})
-endif()
-if(POLYGLOT_ENABLE_PYTHON)
-    target_link_libraries(PolyglotDependencies INTERFACE
-        Python3::Python
-        pybind11::module
-    )
-    target_include_directories(PolyglotDependencies INTERFACE ${Python3_INCLUDE_DIRS})
-endif()
+target_link_libraries(PolyglotDependencies INTERFACE ${LUA_LIBRARIES})
+target_include_directories(PolyglotDependencies INTERFACE ${LUA_INCLUDE_DIR})
+target_link_libraries(PolyglotDependencies INTERFACE
+    Python3::Python
+    pybind11::module
+)
+target_include_directories(PolyglotDependencies INTERFACE ${Python3_INCLUDE_DIRS})
 
 target_link_libraries(Polyglot PUBLIC PolyglotDependencies)
 target_link_libraries(PolyglotTest PRIVATE PolyglotDependencies Catch2::Catch2WithMain)
@@ -108,25 +97,47 @@ target_compile_definitions(Polyglot PRIVATE
     $<$<CONFIG:Debug>:DEBUG>
 )
 ############################################################################
-if(POLYGLOT_ENABLE_PYTHON)
-    set(PYTHON_EXT_ARGS ${POLYGLOT_PYTHON_EXTENSIONS})
-    set(PYTHON_EXECUTABLE ${Python3_EXECUTABLE})
-    get_filename_component(PYTHON_ROOT "${Python3_EXECUTABLE}" DIRECTORY)
 
-    add_custom_command(
-        TARGET Polyglot POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E env PYTHON_ROOT="${PYTHON_ROOT}" 
-                ${PYTHON_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sync_python.py" 
-                "${PYTHON_ROOT}" "$<TARGET_FILE_DIR:Polyglot>/python" ${PYTHON_EXT_ARGS}
-        COMMENT "Syncing Python environment and installing extensions"
-        VERBATIM
-    )
-    add_custom_command(
-        TARGET PolyglotTest POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E env PYTHON_ROOT="${PYTHON_ROOT}" 
-                ${PYTHON_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sync_python.py" 
-                "${PYTHON_ROOT}" "$<TARGET_FILE_DIR:PolyglotTest>/python" ${PYTHON_EXT_ARGS}
-        COMMENT "Syncing Python environment and installing extensions"
-        VERBATIM
-    )
-endif()
+set(PYTHON_EXT_ARGS ${POLYGLOT_PYTHON_EXTENSIONS})
+set(PYTHON_EXECUTABLE ${Python3_EXECUTABLE})
+get_filename_component(PYTHON_ROOT "${Python3_EXECUTABLE}" DIRECTORY)
+
+add_custom_command(
+    TARGET Polyglot POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E env PYTHON_ROOT="${PYTHON_ROOT}" 
+            ${PYTHON_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sync_python.py" 
+            "${PYTHON_ROOT}" "$<TARGET_FILE_DIR:Polyglot>/python" ${PYTHON_EXT_ARGS}
+    COMMENT "Syncing Python environment and installing extensions"
+    VERBATIM
+)
+add_custom_command(
+    TARGET PolyglotTest POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E env PYTHON_ROOT="${PYTHON_ROOT}" 
+            ${PYTHON_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sync_python.py" 
+            "${PYTHON_ROOT}" "$<TARGET_FILE_DIR:PolyglotTest>/python" ${PYTHON_EXT_ARGS}
+    COMMENT "Syncing Python environment and installing extensions"
+    VERBATIM
+)
+
+set(LUA_EXT_ARGS ${POLYGLOT_LUA_EXTENSIONS})
+
+add_custom_command(
+    TARGET Polyglot POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sync_lua.py" 
+            "$<TARGET_FILE_DIR:Polyglot>/lua/sync_lua.py"
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sync_lua.py" 
+            "$<TARGET_FILE_DIR:Polyglot>/lua/modules" --allow-offline ${LUA_EXT_ARGS}
+    COMMENT "Syncing Lua environment and installing extensions"
+    VERBATIM
+)
+add_custom_command(
+    TARGET PolyglotTest POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sync_lua.py" 
+            "$<TARGET_FILE_DIR:PolyglotTest>/lua/sync_lua.py"
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sync_lua.py" 
+            "$<TARGET_FILE_DIR:PolyglotTest>/lua/modules" --allow-offline ${LUA_EXT_ARGS}
+    COMMENT "Syncing Lua environment and installing extensions"
+    VERBATIM
+)
